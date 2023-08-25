@@ -6,11 +6,11 @@ use Illuminate\Support\Facades\Facade;
 
 /**
  * @method static \Illuminate\Http\Client\PendingRequest request()
- * @method static array get(string $endpoint, ?array $query = null)
- * @method static array post(string $endpoint, ?array $data = null)
- * @method static array put(string $endpoint, ?array $data = null)
- * @method static array patch(string $endpoint, ?array $data = null)
- * @method static array delete(string $endpoint)
+ * @method static \Illuminate\Http\Client\Response get(string $endpoint, ?array $query = null)
+ * @method static \Illuminate\Http\Client\Response post(string $endpoint, ?array $data = null)
+ * @method static \Illuminate\Http\Client\Response put(string $endpoint, ?array $data = null)
+ * @method static \Illuminate\Http\Client\Response patch(string $endpoint, ?array $data = null)
+ * @method static \Illuminate\Http\Client\Response delete(string $endpoint)
  * 
  * @see \Microsoft\GraphAPI\Client
  */

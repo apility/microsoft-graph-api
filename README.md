@@ -1,6 +1,6 @@
 # Microsoft Graph API client library
 
-This package provides a PHP client library for working with the Microsoft Graph API.
+This package provides a Laravel wwrappers for working with the Microsoft Graph API.
 
 ## Table of Contents
 
@@ -8,6 +8,7 @@ This package provides a PHP client library for working with the Microsoft Graph 
 - [Laravel](#laravel)
     - [Configuration](#configuration)
     - [Usage](#usage)
+    - [Filesystem](#filesystem)
 - [Without Laravel (Plain PHP)](#without-laravel-plain-php)
     - [Usage](#usage-1)
 - [License](#license)
@@ -41,8 +42,31 @@ MICROSOFT_GRAPH_API_CLIENT_SECRET=<your-client-secret>
 ```php
 use Microsoft\GraphAPI\Facades\GraphAPI;
 
-$me = GraphAPI::get('/me');
+$me = GraphAPI::get('/me')->json();
 ```
+
+### Filesystem
+
+The package also provides a Flysystem adapter.
+
+To enable this, add the following to your disk configuration in the `config/filesystems.php` file:
+
+```php
+'disks' => [
+    'microsoft' => [
+        'driver' => 'microsoft',
+        'site_id' => env('MICROSOFT_GRAPH_API_SITE_ID'),
+    ],
+],
+```
+
+You may now use the `microsoft` disk in your application.
+
+```php
+$files = Storage::disk('microsoft')->allFiles('path');
+```
+
+Only read, list and delete operations are currently supported.
 
 ## Without Laravel (Plain PHP)
 

@@ -16,10 +16,27 @@
       }
    ],
    "type": "library",
+   "config": {
+      "platform": {
+         "php": "7.4"
+      }
+   },
    "require": {
-      "illuminate/cache": "^8.0|^9.0|^10.0",
-      "illuminate/support": "^8.0|^9.0|^10.0",
-      "illuminate/http": "^8.0|^9.0|^10.0"
+      "php": "^7.4|^8.0",
+      "illuminate/cache": "^8.0",
+      "illuminate/support": "^8.0",
+      "illuminate/http": "^8.0",
+      "illuminate/routing": "^8.0",
+      "laravel/socialite": "^5.8",
+      "socialiteproviders/microsoft-azure": "^5.1",
+      "league/flysystem": "^1.0",
+      "league/flysystem-cached-adapter": "^1.1"
+   },
+   "require-dev": {
+      "illuminate/config": "^8.0",
+      "illuminate/container": "^8.0",
+      "larapack/dd": "^1.1",
+      "phpunit/phpunit": "^9.6"
    },
    "autoload": {
       "psr-4": {

@@ -8,7 +8,7 @@ use Illuminate\Http\Client\HttpClientException;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
-
+use Laravel\Socialite\Facades\Socialite;
 use Microsoft\GraphAPI\Auth\Credentials;
 use Microsoft\GraphAPI\Concerns\AuthorizesRequests;
 use Microsoft\GraphAPI\Exceptions\GraphAPIException;
@@ -29,7 +29,13 @@ class Client
         $this->setCredentials($credentials);
     }
 
-    protected function request(): PendingRequest
+    public function login()
+    {
+        return Socialite::driver('microsoft-identity-platform')
+            ->redirect();
+    }
+
+    public function request(): PendingRequest
     {
         $request = Http::baseUrl('https://graph.microsoft.com/v1.0/');
 
@@ -51,13 +57,12 @@ class Client
         }
     }
 
-    protected function handle(Closure $callback): array
+    protected function handle(Closure $callback): Response
     {
-        return $this->response($callback($this->request()))
-            ->json();
+        return $this->response($callback($this->request()));
     }
 
-    public function __call(string $name, array $arguments = []): array
+    public function __call(string $name, array $arguments = []): Response
     {
         return $this->handle(
             fn (PendingRequest $request) => $request->$name(...$arguments)

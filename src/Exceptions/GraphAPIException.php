@@ -4,7 +4,7 @@ namespace Microsoft\GraphAPI\Exceptions;
 
 use Illuminate\Http\Client\Response;
 
-final class GraphAPIException extends Exception
+final class GraphAPIException extends HttpException
 {
     protected function parseError(Response $response): string
     {
