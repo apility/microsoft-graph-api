@@ -78,6 +78,17 @@ class Adapter extends AbstractAdapter
         return $this->getDriveItem($path);
     }
 
+    protected function getDriveItemUrl(DriveItem $item): string
+    {
+        $path = sprintf('/sites/%s/drive/items/%s/content', $this->site_id, $item->id());
+
+        $response = GraphAPI::request()
+            ->withOptions(['allow_redirects' => false])
+            ->get($path);
+
+        return $response->header('Location');
+    }
+
     protected function getDriveItemContents(DriveItem $item): StreamInterface
     {
         $path = sprintf('/sites/%s/drive/items/%s/content', $this->site_id, $item->id());
@@ -372,6 +383,25 @@ class Adapter extends AbstractAdapter
     public function has($path)
     {
         return $this->getDriveItem($path) !== null;
+    }
+
+    /**
+     * @param string $path
+     * @return string|bool
+     */
+    public function getUrl($path)
+    {
+        try {
+            $url = $this->getDriveItem($path);
+
+            if ($url === null) {
+                return false;
+            }
+
+            return $this->getDriveItemUrl($url);
+        } catch (GraphAPIException $e) {
+            return false;
+        }
     }
 
     /**
