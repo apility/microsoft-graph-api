@@ -158,7 +158,7 @@ class Adapter extends AbstractAdapter
     {
         $normalized = [
             'type' => $item->type() === DriveItem::TYPE_FILE ? 'file' : 'dir',
-            'path' => $item->path(),
+            'path' => ltrim($item->path(), '/'),
             'timestamp' => $item->lastModifiedDateTime()->getTimestamp(),
             'size' => $item->size(),
             'mimetype' => $item->mimeType(),
