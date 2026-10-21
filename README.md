@@ -19,6 +19,8 @@ This package provides a Laravel wwrappers for working with the Microsoft Graph A
 composer require apility/microsoft-graph-api
 ```
 
+Requires PHP 8 and Laravel 9 or later. Laravel 8 projects can stay on `v1.0.0-RC4`.
+
 ## Laravel
 
 ### Configuration
@@ -47,7 +49,7 @@ $me = GraphAPI::get('/me')->json();
 
 ### Filesystem
 
-The package also provides a Flysystem adapter.
+The package also provides a Flysystem 3 adapter.
 
 To enable this, add the following to your disk configuration in the `config/filesystems.php` file:
 
@@ -66,7 +68,7 @@ You may now use the `microsoft` disk in your application.
 $files = Storage::disk('microsoft')->allFiles('path');
 ```
 
-Only read, list and delete operations are currently supported.
+Only read, list, delete, move and directory creation are currently supported. Folders report the mimetype `directory`.
 
 ## Without Laravel (Plain PHP)
 

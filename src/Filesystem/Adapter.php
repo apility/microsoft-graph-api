@@ -4,8 +4,20 @@ namespace Microsoft\GraphAPI\Filesystem;
 
 use RuntimeException;
 
-use League\Flysystem\Adapter\AbstractAdapter;
 use League\Flysystem\Config;
+use League\Flysystem\DirectoryAttributes;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\FilesystemAdapter;
+use League\Flysystem\StorageAttributes;
+use League\Flysystem\UnableToCopyFile;
+use League\Flysystem\UnableToCreateDirectory;
+use League\Flysystem\UnableToDeleteDirectory;
+use League\Flysystem\UnableToDeleteFile;
+use League\Flysystem\UnableToMoveFile;
+use League\Flysystem\UnableToReadFile;
+use League\Flysystem\UnableToRetrieveMetadata;
+use League\Flysystem\UnableToSetVisibility;
+use League\Flysystem\UnableToWriteFile;
 
 use Microsoft\GraphAPI\Exceptions\GraphAPIException;
 use Microsoft\GraphAPI\Facades\GraphAPI;
@@ -13,7 +25,7 @@ use Microsoft\GraphAPI\Filesystem\Models\DriveItem;
 
 use Psr\Http\Message\StreamInterface;
 
-class Adapter extends AbstractAdapter
+class Adapter implements FilesystemAdapter
 {
     const MAX_CHUNK_SIZE = 1024 * 1024 * 4;
 
@@ -165,227 +177,200 @@ class Adapter extends AbstractAdapter
         return ltrim($dirname, '/');
     }
 
-    protected function normalizeDriveItem(DriveItem $item)
+    protected function normalizeDriveItem(DriveItem $item): StorageAttributes
     {
-        $normalized = [
-            'type' => $item->type() === DriveItem::TYPE_FILE ? 'file' : 'dir',
-            'path' => ltrim($item->path(), '/'),
-            'timestamp' => $item->lastModifiedDateTime()->getTimestamp(),
-            'size' => $item->size(),
-            'mimetype' => $item->mimeType(),
-            'visibility' => 'public',
-            'dirname' => $this->normalizeDirname($item->path()),
-        ];
+        $path = ltrim($item->path(), '/');
+        $timestamp = $item->lastModifiedDateTime()->getTimestamp();
 
-        return $normalized;
+        if ($item->type() === DriveItem::TYPE_FOLDER) {
+            return new DirectoryAttributes($path, 'public', $timestamp);
+        }
+
+        return new FileAttributes($path, $item->size(), 'public', $timestamp, $item->mimeType());
     }
 
     /**
-     * Write a new file.
-     *
-     * @param string $path
-     * @param string $contents
-     * @param Config $config   Config object
-     *
-     * @return array|false false on failure file meta data on success
+     * Metadata for a file or folder. Folders report the mimetype "directory",
+     * which consumers use to tell the two apart.
      */
-    public function write($path, $contents, Config $config)
-    {
-        return false;
-    }
-
-    /**
-     * Write a new file using a stream.
-     *
-     * @param string   $path
-     * @param resource $resource
-     * @param Config   $config   Config object
-     *
-     * @return array|false false on failure file meta data on success
-     */
-    public function writeStream($path, $resource, Config $config)
-    {
-        return false;
-    }
-
-    /**
-     * Update a file.
-     *
-     * @param string $path
-     * @param string $contents
-     * @param Config $config   Config object
-     *
-     * @return array|false false on failure file meta data on success
-     */
-    public function update($path, $contents, Config $config)
-    {
-        return false;
-    }
-
-    /**
-     * Update a file using a stream.
-     *
-     * @param string   $path
-     * @param resource $resource
-     * @param Config   $config   Config object
-     *
-     * @return array|false false on failure file meta data on success
-     */
-    public function updateStream($path, $resource, Config $config)
-    {
-        return false;
-    }
-
-    /**
-     * Rename a file.
-     *
-     * @param string $path
-     * @param string $newpath
-     *
-     * @return bool
-     */
-    public function rename($path, $newpath)
+    protected function attributes(string $path, string $type): FileAttributes
     {
         $item = $this->getDriveItem($path);
 
         if ($item === null) {
-            return false;
+            throw UnableToRetrieveMetadata::create($path, $type, 'Drive item not found');
         }
 
-        $newname = basename($newpath);
-        $newparent = dirname($newpath);
-        $newparent = $newparent === '.' ? '' : $newparent;
+        return new FileAttributes(
+            ltrim($item->path(), '/'),
+            $item->size(),
+            'public',
+            $item->lastModifiedDateTime()->getTimestamp(),
+            $item->mimeType()
+        );
+    }
 
-        $path = explode('/', $newparent);
+    public function fileExists(string $path): bool
+    {
+        $item = $this->getDriveItem($path);
+
+        return $item !== null && $item->type() === DriveItem::TYPE_FILE;
+    }
+
+    public function directoryExists(string $path): bool
+    {
+        $item = $this->getDriveItem($path);
+
+        return $item !== null && $item->type() === DriveItem::TYPE_FOLDER;
+    }
+
+    public function write(string $path, string $contents, Config $config): void
+    {
+        throw UnableToWriteFile::atLocation($path, 'Writing files is not supported');
+    }
+
+    public function writeStream(string $path, $contents, Config $config): void
+    {
+        throw UnableToWriteFile::atLocation($path, 'Writing files is not supported');
+    }
+
+    public function read(string $path): string
+    {
+        $item = $this->getDriveItem($path);
+
+        if ($item === null || $item->type() !== DriveItem::TYPE_FILE) {
+            throw UnableToReadFile::fromLocation($path, 'File not found');
+        }
+
+        return (string) $this->getDriveItemContents($item);
+    }
+
+    public function readStream(string $path)
+    {
+        $item = $this->getDriveItem($path);
+
+        if ($item === null || $item->type() !== DriveItem::TYPE_FILE) {
+            throw UnableToReadFile::fromLocation($path, 'File not found');
+        }
+
+        return $this->getDriveItemContents($item)->detach();
+    }
+
+    public function delete(string $path): void
+    {
+        $item = $this->getDriveItem($path);
+
+        if ($item === null || $item->type() !== DriveItem::TYPE_FILE || !$this->deleteDriveItem($item)) {
+            throw UnableToDeleteFile::atLocation($path);
+        }
+    }
+
+    public function deleteDirectory(string $path): void
+    {
+        $item = $this->getDriveItem($path);
+
+        if ($item === null || $item->type() !== DriveItem::TYPE_FOLDER || !$this->deleteDriveItem($item)) {
+            throw UnableToDeleteDirectory::atLocation($path);
+        }
+    }
+
+    /**
+     * Create a directory, including any missing parent directories.
+     */
+    public function createDirectory(string $path, Config $config): void
+    {
         $exists = [];
 
-        while (count($path) > 0) {
-            $directory = array_shift($path);
+        foreach (array_filter(explode('/', trim($path, '/')), 'strlen') as $directory) {
             $directoryPath = implode('/', array_merge($exists, [$directory]));
 
-            if (!$this->has($directoryPath)) {
-                $this->createDir($directoryPath, new Config());
+            if (!$this->directoryExists($directoryPath)) {
+                try {
+                    $this->createDriveItem($directoryPath, DriveItem::TYPE_FOLDER);
+                } catch (GraphAPIException | RuntimeException $e) {
+                    throw UnableToCreateDirectory::atLocation($directoryPath, $e->getMessage(), $e);
+                }
             }
 
             $exists[] = $directory;
         }
+    }
+
+    public function setVisibility(string $path, string $visibility): void
+    {
+        throw UnableToSetVisibility::atLocation($path, 'Visibility is not supported');
+    }
+
+    public function visibility(string $path): FileAttributes
+    {
+        return $this->attributes($path, FileAttributes::ATTRIBUTE_VISIBILITY);
+    }
+
+    public function mimeType(string $path): FileAttributes
+    {
+        return $this->attributes($path, FileAttributes::ATTRIBUTE_MIME_TYPE);
+    }
+
+    public function lastModified(string $path): FileAttributes
+    {
+        return $this->attributes($path, FileAttributes::ATTRIBUTE_LAST_MODIFIED);
+    }
+
+    public function fileSize(string $path): FileAttributes
+    {
+        return $this->attributes($path, FileAttributes::ATTRIBUTE_FILE_SIZE);
+    }
+
+    public function listContents(string $path, bool $deep): iterable
+    {
+        $items = $deep
+            ? $this->listDriveItemsRecursive($path)
+            : $this->listDriveItems($path);
+
+        foreach ($items as $item) {
+            yield $this->normalizeDriveItem($item);
+        }
+    }
+
+    public function move(string $source, string $destination, Config $config): void
+    {
+        $item = $this->getDriveItem($source);
+
+        if ($item === null) {
+            throw UnableToMoveFile::fromLocationTo($source, $destination);
+        }
+
+        $newparent = dirname($destination);
+        $newparent = $newparent === '.' ? '' : $newparent;
+
+        try {
+            $this->createDirectory($newparent, $config);
+        } catch (UnableToCreateDirectory $e) {
+            throw UnableToMoveFile::fromLocationTo($source, $destination, $e);
+        }
 
         $parentItem = $this->getDriveItem($newparent);
 
-        if ($parentItem === null) {
-            return false;
-        }
-
-        return $this->updateDriveItem($item, [
-            'name' => $newname,
+        $moved = $parentItem !== null && $this->updateDriveItem($item, [
+            'name' => basename($destination),
             'parentReference' => [
                 'id' => $parentItem->id(),
             ],
         ]);
-    }
 
-    /**
-     * Copy a file.
-     *
-     * @param string $path
-     * @param string $newpath
-     *
-     * @return bool
-     */
-    public function copy($path, $newpath)
-    {
-        return false;
-    }
-
-    /**
-     * Delete a file.
-     *
-     * @param string $path
-     *
-     * @return bool
-     */
-    public function delete($path)
-    {
-        $directory = $this->getDriveItem($path);
-
-        if ($directory === null) {
-            return false;
-        }
-
-        if ($directory->type() !== DriveItem::TYPE_FILE) {
-            return false;
-        }
-
-        return $this->deleteDriveItem($directory);
-    }
-
-    /**
-     * Delete a directory.
-     *
-     * @param string $dirname
-     *
-     * @return bool
-     */
-    public function deleteDir($dirname)
-    {
-        $directory = $this->getDriveItem($dirname);
-
-        if ($directory === null) {
-            return false;
-        }
-
-        if ($directory->type() !== DriveItem::TYPE_FOLDER) {
-            return false;
-        }
-
-        return $this->deleteDriveItem($directory);
-    }
-
-    /**
-     * Create a directory.
-     *
-     * @param string $dirname directory name
-     * @param Config $config
-     *
-     * @return array|false
-     */
-    public function createDir($dirname, Config $config)
-    {
-        try {
-            return $this->normalizeDriveItem(
-                $this->createDriveItem($dirname, DriveItem::TYPE_FOLDER)
-            );
-        } catch (GraphAPIException $e) {
-            return false;
+        if (!$moved) {
+            throw UnableToMoveFile::fromLocationTo($source, $destination);
         }
     }
 
-    /**
-     * Set the visibility for a file.
-     *
-     * @param string $path
-     * @param string $visibility
-     *
-     * @return false file meta data
-     */
-    public function setVisibility($path, $visibility)
+    public function copy(string $source, string $destination, Config $config): void
     {
-        return false;
+        throw UnableToCopyFile::fromLocationTo($source, $destination);
     }
 
     /**
-     * Check whether a file exists.
+     * Called by Illuminate\Filesystem\FilesystemAdapter::url()
      *
-     * @param string $path
-     *
-     * @return bool
-     */
-    public function has($path)
-    {
-        return $this->getDriveItem($path) !== null;
-    }
-
-    /**
      * @param string $path
      * @return string|bool
      */
@@ -402,128 +387,5 @@ class Adapter extends AbstractAdapter
         } catch (GraphAPIException $e) {
             return false;
         }
-    }
-
-    /**
-     * Read a file.
-     *
-     * @param string $path
-     *
-     * @return array|false
-     */
-    public function read($path)
-    {
-        $item = $this->getDriveItem($path);
-
-        if ($item === null) {
-            return false;
-        }
-
-        if ($item === null || $item->type() !== DriveItem::TYPE_FILE) {
-            return false;
-        }
-
-        $contents = (string) $this->getDriveItemContents($item);
-
-        return ['contents' => $contents];
-    }
-
-    /**
-     * Read a file as a stream.
-     *
-     * @param string $path
-     *
-     * @return array|false
-     */
-    public function readStream($path)
-    {
-        $item = $this->getDriveItem($path);
-
-        if ($item === null || $item->type() !== DriveItem::TYPE_FILE) {
-            return false;
-        }
-
-        $stream = $this->getDriveItemContents($item)->detach();
-
-        return ['type' => 'file', 'path' => $path, 'stream' => $stream];
-    }
-
-    /**
-     * List contents of a directory.
-     *
-     * @param string $directory
-     * @param bool   $recursive
-     *
-     * @return array
-     */
-    public function listContents($directory = '', $recursive = false)
-    {
-        $contents = $recursive
-            ? $this->listDriveItemsRecursive($directory)
-            : $this->listDriveItems($directory);
-
-        return array_map(fn (DriveItem $item) => $this->normalizeDriveItem($item), $contents);
-    }
-
-    /**
-     * Get all the meta data of a file or directory.
-     *
-     * @param string $path
-     *
-     * @return array|false
-     */
-    public function getMetadata($path)
-    {
-        return $this->normalizeDriveItem(
-            $this->getDriveItem($path)
-        );
-    }
-
-    /**
-     * Get the size of a file.
-     *
-     * @param string $path
-     *
-     * @return array|false
-     */
-    public function getSize($path)
-    {
-        return $this->getMetadata($path);
-    }
-
-    /**
-     * Get the mimetype of a file.
-     *
-     * @param string $path
-     *
-     * @return array|false
-     */
-    public function getMimetype($path)
-    {
-        return $this->getMetadata($path);
-    }
-
-    /**
-     * Get the last modified time of a file as a timestamp.
-     *
-     * @param string $path
-     *
-     * @return array|false
-     */
-    public function getTimestamp($path)
-    {
-        return $this->getMetadata($path);
-    }
-
-    /**
-     * Get the visibility of a file.
-     *
-     * @param string $path
-     *
-     * @return array|false
-     */
-    public function getVisibility($path)
-    {
-        return $this->getMetadata($path);
     }
 }
